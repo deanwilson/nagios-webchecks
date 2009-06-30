@@ -1,0 +1,64 @@
+#!/usr/bin/perl
+use strict;
+use warnings;
+use Config::Tiny;
+use Data::Dumper;
+use Getopt::Long;
+use File::Basename;
+use Template;
+
+GetOptions(
+  "c|config=s"   => \( my $configfile = 'webconfig.ini' ),
+  "d|debug"      => \( my $debug      = 0 ),
+  "m|monitor=s"  => \( my $monitor    = 'off0monitoring01.int.unixdaemon.net'),
+  "t|template=s" => \( my $template   = 'nagios-webchecks.tt'),
+);
+
+my $checks = get_configs();
+
+my $tt = Template->new();
+
+$tt->process( $template, { checks => $checks, monitor => $monitor,  sprintf => \&my_sprintf } )
+  || die $tt->error();
+
+#####################################################
+
+sub my_sprintf {
+   my ($format, @args) = @_;
+   return sprintf $format, @args;
+}
+
+sub get_configs {
+  my $config = Config::Tiny->new();
+  $config = Config::Tiny->read( $configfile )
+    || die "Failed to open [$configfile]: $Config::Tiny::errstr\n";
+
+  print Dumper $config if $debug; print "\n" if $debug;
+
+  # expand groups in to arrays - uses implict aliasing
+  for my $group ( values %{ $config->{'groups::'} } ) {
+    $group = [ split /[, ]+/, $group ];
+  }
+
+  my @checks;
+  for my $name ( sort grep { /^check::/ } keys %$config ) {
+    my $check = $config->{$name};
+
+    $name =~ s/^check:://;
+    $check->{name} = $name;
+    push @checks, $check;
+    
+    # expand group in to array
+    for my $group ( $check->{group} ) {
+      $group = [ split /[, ]+/, $group ];
+    }
+
+    # create expanded host key under the check based on the groups
+    $check->{hosts} = [ map {
+       @{ $config->{'groups::'}{$_} || [] } 
+    } @{ $check->{group} } ];
+  }
+
+  print Dumper \@checks if $debug; print "\n" if $debug;
+  return \@checks;
+}

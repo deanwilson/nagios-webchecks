@@ -1,0 +1,5 @@
+[%- FOR check IN checks -%]
+[% FOR host IN check.hosts %]
+[%- sprintf( check.command, host ) %]
+[% END -%]
+[%- END -%]
